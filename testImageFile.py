@@ -5,8 +5,6 @@ import sys
 
 # Testing EXIF read,  and parsing directory names to look for a proposed new name for the directory structure
 
-filePath = "C:\\Users\\hulk\\OneDrive\\MassiveStorage\\PictureArchive\\[D]\\Our Pictures\\Eigth Import\\2-4-2014"
-
 def main():
     if (len(sys.argv) < 3):
         print("Please give a path on the command line")
