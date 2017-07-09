@@ -27,15 +27,6 @@ class MainWidget(QWidget):
         super().__init__()
         self.FileCounter = 0
         self.DictSearchDirectories = {}
-        self.DictFiles = {}
-        self.DictExtensions = {'.ini':'i', # meta data
-                               '.jpg':'p' , # still image photo
-                               '.tiff':'p',
-                               '.bmp':'p',
-                               '.arf':'r', # still image raw
-                               '.dng':'r',
-                               '.mov':'v', # video
-                               '.mp4':'v'}
         self.DirButtons = []
         self.initUI()
 
@@ -116,10 +107,12 @@ class MainWidget(QWidget):
         self.FileCounter = 0
         #print (self.DictSearchDirectories.keys())
         for theDir in self.DictSearchDirectories.keys():
-            file_paths = get_filepaths(theDir, self.DictExtensions)
+            #file_paths = get_filepaths(theDir, self.DictExtensions)
+            for root, directories, files in os.walk(theDir):
+                for filename in files:
+                    MediaDB.AddFileToDB(filename)
             #print (file_paths)
-            self.DictFiles[theDir] = file_paths
-            self.FileCounter += len(file_paths)
+            self.FileCounter += MediaDB.StatsDB["Total files"];
             self.filesFound.setText(str(self.FileCounter) + " files")
         self.filesFound.setText(str(self.FileCounter) + " files")
 
@@ -127,10 +120,6 @@ class MainWidget(QWidget):
         self.analyzeFiles()
 
     def analyzeFiles(self):
-        for dirList in self.DictFiles.keys():
-            for file in self.DictFiles.get(dirList):
-                MediaDB.AddFileToDB(file)
-
         #self.outputText.setText(outstring)
         MediaDB.UpdateDB()
         MediaDB.CreateRecommendedTree()
@@ -149,20 +138,6 @@ class MainWidget(QWidget):
         #options |= QFileDialog.ShowDirsOnly
         files, _ = QFileDialog.getSaveFileNames(self,"Directories", "","All Files (*)", options=options)
         return files
-
-def get_filepaths(directory, theDict):
-    file_paths = []  # List which will store all of the full filepaths.
-    # Walk the tree.
-    for root, directories, files in os.walk(directory):
-        for filename in files:
-            the_name, the_extension = os.path.splitext(filename)
-            lc_extension = the_extension.lower()
-            filetype = theDict.get(lc_extension,"0")
-            if filetype != "0":
-                # Join the two strings in order to form the full filepath.
-                filepath = os.path.join(root, filename)
-                file_paths.append(filepath)  # Add it to the list.
-    return file_paths  # Self-explanatory.
 
 class PhotoCleanupApp(QMainWindow):
     def __init__(self):
