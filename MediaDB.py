@@ -197,6 +197,12 @@ def CreateRecommendedTree():
     DebugPrint("End Tree Print",  4)
     for pre,  fill,  nodule in RenderTree(rootNode):
         DebugPrint("%s%s" % (pre,  nodule.name),  3)
+
+def GetRecommendedTreeString():
+    string = ""
+    for pre,  fill,  nodule in RenderTree(SortDB["RootNode"]):
+        string = string + "%s%s\n" % (pre,  nodule.name)
+    return string
     
 # -----
 # DumpDB - useful for debug
