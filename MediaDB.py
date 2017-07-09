@@ -7,11 +7,9 @@ import os
 import datetime
 import re
 import exifread
-#import anytree
+from inspect import currentframe, getframeinfo
 from anytree import  Node,  RenderTree
-#import sys
 
-verboseLevel = 0
 # DictDB structure
 # Purpose - master record of all files found
 #  key = full path + file name
@@ -31,6 +29,8 @@ SortDB = {}
 # as we encounter interesting statistics, we initialize in InitDB (please see below for each item)
 StatsDB = {}
 
+# data structure to hold global variables
+Globals = {}
 
 
 
@@ -40,7 +40,7 @@ StatsDB = {}
 #--------------------
 def InitDB(requestedVerboseLevel):
     print("Initializing DB")
-    verboseLevel = requestedVerboseLevel
+    Globals["VerboseLevel"] = requestedVerboseLevel
     StatsDB["Metafile count"] = 0   # .ini files, etc
     StatsDB["Picture count"] = 0     # any still or multi-still image
     StatsDB["Video count"] = 0        # any video sequence
@@ -84,7 +84,9 @@ def AddFileToDB(file):
         else:
             count = DictDB[file].get('RefCount',  0)
             if (count == 0):
-                ErrorPrint ("Error! we should not have gotten a zero")
+                frameinfo = getframeinfo(currentframe())
+                errorInfo = str(frameinfo.filename) + ":" + str(frameinfo.lineno) + "> "
+                ErrorPrint (errorInfo + "Error! we should not have gotten a zero")
             DictDB[file]['RefCount'] = count + 1
             DictDB[file]['FileType'] = ftype
             StatsDB["Collision count"] = StatsDB["Collision count"] + 1
@@ -113,7 +115,9 @@ def RemoveFileFromDB(file):
     entry = DictDB.get(file, 0)
     if (entry == 0): 
         # error
-        ErrorPrint("Unknown file: "+ file)
+        frameinfo = getframeinfo(currentframe())
+        errorInfo = str(frameinfo.filename) + ":" + str(frameinfo.lineno) + "> "
+        ErrorPrint(errorInfo + "Unknown file: "+ file)
     else:
         count = DictDB[file]['RefCount']
         if (count > 1):
@@ -282,7 +286,9 @@ def FindDateFromEXIF(file):
         day = int(m.group(3))
         success = 1
     except Exception as e:
-        ErrorPrint("No EXIF")
+        frameinfo = getframeinfo(currentframe())
+        errorInfo = str(frameinfo.filename) + ":" + str(frameinfo.lineno) + "> "
+        ErrorPrint(errorInfo+"No EXIF")
     return [success,  year,  month,  day]
     
 def FindDateFromDirectory(file):
@@ -313,7 +319,9 @@ def regexFileDate(string):
         day = int(m.group(2))
         success = 1
     except Exception as e:
-        ErrorPrint("No name in the directory")
+        frameinfo = getframeinfo(currentframe())
+        errorInfo = str(frameinfo.filename) + ":" + str(frameinfo.lineno) + "> "
+        ErrorPrint(errorInfo + "No name in the directory")
     return [success,  year,  month,  day]
 
 
@@ -349,7 +357,9 @@ def DetermineLikelyDate(fileEntry):
         listKeys = list(hist.keys())
         DebugPrint(str(listKeys),  3)
         if (hist[listKeys[1]] == maxCount):
-            ErrorPrint("We have a tie!")
+            frameinfo = getframeinfo(currentframe())
+            errorInfo = str(frameinfo.filename) + ":" + str(frameinfo.lineno) + "> "
+            ErrorPrint(errorInfo + "We have a tie!")
     # second priority order
     
     
@@ -358,8 +368,8 @@ def DetermineLikelyDate(fileEntry):
 # a quick little function that cleans up the debug prints throughout the code
 # example: if verbose is at 3, it prints everything
 # if at v=1, then only general function flow is printed
-def DebugPrint(printString,  printLevel):
-    if (printLevel >= verboseLevel):
+def DebugPrint(printString, printLevel):
+    if (printLevel < Globals["VerboseLevel"]):
         print(printString)
 # later if we want to do something due to errors
 def ErrorPrint(printString):
