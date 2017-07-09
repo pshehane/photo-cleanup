@@ -1,8 +1,26 @@
+#-------------------------------------------------
+# Photo Cleanup Tool
+#
+# This python + QT tool has the user select where all their photos and videos are stored
+#  then analyzing as best it can to determine the date of the photos/videos, and then creates
+#  a new directory structure at the destination, which will be clean and cronological.
+#  Over more than a dozen years of sync'ing digital cameras, smartphones, and family shared images,
+#  some order is needed to this mess.  Online backups are organized, but the original archive is what we 
+#  have locally.
+#
+# This uses MediaDB for most of the underlying analysis and management of the files
+# This file is primarily the UI component to it
+#
+# author - patrick shehane
+# date - July 9 2017
+#-------------------
 import sys
 from PyQt5.QtWidgets import QApplication, QWidget, QFileDialog, QLabel, QPushButton
 from PyQt5.QtWidgets import QHBoxLayout,QVBoxLayout, QScrollArea
-from PyQt5.QtGui import QPainter, QColor, QPen
-from PyQt5.QtWidgets import QMainWindow, QInputDialog, QLineEdit, QAction, QMenuBar
+from PyQt5.QtGui import QPainter, QColor
+#from PyQt5.QtGui import QPen
+from PyQt5.QtWidgets import QMainWindow, QAction
+#from PyQt5.QtWidgets import QInputDialog, QLineEdit, QMenuBar
 #from PyQt5.QtGui import QIcon
 #from PyQt5.QtCore import QRect
 from PyQt5.QtCore import Qt,  QSize
@@ -10,7 +28,7 @@ from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import *
 import math
 import os
-
+import MediaDB
 
 class PaintWidget(QWidget):
     clicked = pyqtSignal()
@@ -196,6 +214,7 @@ class MainWidget(QWidget):
         for dirList in self.DictFiles.keys():
             #print(dirList)
             for file in self.DictFiles.get(dirList):
+                MediaDB.AddFileToDB(file)
                 #print(file)
                 (path,name) = os.path.split(file)
                 if (names.get(name, 0) == 0):
@@ -249,31 +268,8 @@ class MainWidget(QWidget):
         self.paintWidget.setTree(view)
         self.paintWidget.repaint()
             
-            
-
-##        print("Check for dupe sizes:")
-##        for sizeListKey in sizes.keys():
-##            array = sizes[sizeListKey]
-##            if len(array) > 1:
-##                print("More than one: " + str(sizeListKey))
-##                print(str(array))
-##                candidates.append(array);
-##
-##        print("Check for dupe names:")
-##        for nameListKey in names.keys():
-##            array = names[nameListKey]
-##            if len(array) > 1:
-##                print("More than one: " + nameListKey)
-##                print(str(array))
-##                candidates.append(array);
-
-
-
-        # time.ctime(os.path.getatime(file))
-        # time.ctime(os.path.getmtime(file))
-        # time.ctime(os.path.getctime(file))
-        # os.path.getsize(file)
-
+        MediaDB.UpdateDB()
+        MediaDB.CreateRecommendedTree()
 
 
     def saveFileDialog(self):
@@ -337,24 +333,12 @@ class PhotoCleanupApp(QMainWindow):
         p.setColor(self.backgroundRole(), Qt.white)
         self.setPalette(p)
 
-        # Add paint widget and paint
-        #self.m = PaintWidget(self)
-        #self.m.move(0,0)
-        #self.m.resize(100, 100)
-
         self.show()
 
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
+    MediaDB.InitDB(0) # -- initialize the MediaDB
     mainwindow = PhotoCleanupApp()
+    #MediaDB.CleanupDB() # -- cleanup the MediaDB - in case we later support restarting the context
     sys.exit(app.exec_())
-
-
-
-#            i=4
-#            for filename in files:
-#                l = QLabel(self)
-#                l.move(10,i*20)
-#                l.setText(filename)
-#                i += 1
