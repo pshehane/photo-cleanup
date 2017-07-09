@@ -11,6 +11,7 @@ import exifread
 from anytree import  Node,  RenderTree
 #import sys
 
+verboseLevel = 0
 # DictDB structure
 # Purpose - master record of all files found
 #  key = full path + file name
@@ -37,8 +38,9 @@ StatsDB = {}
 # InitDB
 # call to initialize the library and the internal DB's
 #--------------------
-def InitDB():
+def InitDB(requestedVerboseLevel):
     print("Initializing DB")
+    verboseLevel = requestedVerboseLevel
     StatsDB["Metafile count"] = 0   # .ini files, etc
     StatsDB["Picture count"] = 0     # any still or multi-still image
     StatsDB["Video count"] = 0        # any video sequence
@@ -49,12 +51,13 @@ def InitDB():
     StatsDB["Error"] = 0                  # for easy lookup from stats DB
     SortDB["RootNode"] = Node("top")
 
+
 #---------------------
 # CleanupDB
 # call to clean up, for instance if the UI needs to
 #--------------------    
 def CleanupDB():
-    print("Destroying DB")
+    DebugPrint("Destroying DB",  1)
     DictDB.clear()
     SortDB.clear()
     StatsDB.clear()
@@ -67,7 +70,7 @@ def CleanupDB():
 #--------------------
 def AddFileToDB(file):
     count = -1
-    print("Adding <" + file + "> to DB")
+    DebugPrint("Adding <" + file + "> to DB",  3)
     ftype = IsImagingFile(file)
     if (ftype != '0'):
         entry = DictDB.get(file, 0)
@@ -81,7 +84,7 @@ def AddFileToDB(file):
         else:
             count = DictDB[file].get('RefCount',  0)
             if (count == 0):
-                print ("Error! we should not have gotten a zero")
+                ErrorPrint ("Error! we should not have gotten a zero")
             DictDB[file]['RefCount'] = count + 1
             DictDB[file]['FileType'] = ftype
             StatsDB["Collision count"] = StatsDB["Collision count"] + 1
@@ -92,7 +95,7 @@ def AddFileToDB(file):
 # Return count of items with supplied name
 #--------------------
 def CheckFileInDB(file):
-    print("Checking <" + file + "> is in DB")
+    DebugPrint("Checking <" + file + "> is in DB",  3)
     count = DictDB.get(file,  0) 
     if (count != 0):
         count = DictDB[file]['RefCount']
@@ -106,11 +109,11 @@ def CheckFileInDB(file):
 # no return
 #--------------------    
 def RemoveFileFromDB(file):
-    print("Removing <" + file + "> from DB")
+    DebugPrint("Removing <" + file + "> from DB",  3)
     entry = DictDB.get(file, 0)
     if (entry == 0): 
         # error
-        print("Unknown file: "+ file)
+        ErrorPrint("Unknown file: "+ file)
     else:
         count = DictDB[file]['RefCount']
         if (count > 1):
@@ -142,7 +145,7 @@ def UpdateDB():
 # Use the analysis to create a date-based tree
 # 
 def CreateRecommendedTree():
-    print("Create Recommended Tree")
+    DebugPrint("Create Recommended Tree",  1)
     rootNode = SortDB["RootNode"]
     NodeDict = {}
     for k in DictDB.keys():
@@ -185,29 +188,28 @@ def CreateRecommendedTree():
                     dayNode = Node(sDay,  parent=monthNode)
                     rootpath,  filename = os.path.split(k)
                     fileNode = Node(filename,  parent=dayNode)
-                print(str(fileNode))
-    print("Print Tree:")
-    print(RenderTree(rootNode))
-    print("End Tree Print")
+                DebugPrint(str(fileNode),  3)
+    DebugPrint("Print Tree:",  4)
+    DebugPrint(RenderTree(rootNode),  4)
+    DebugPrint("End Tree Print",  4)
     for pre,  fill,  nodule in RenderTree(rootNode):
-        print("%s%s" % (pre,  nodule.name))
+        DebugPrint("%s%s" % (pre,  nodule.name),  3)
     
-
 # -----
 # DumpDB - useful for debug
 # ------
 def DumpDB():
-    print("DB contents:")
+    DebugPrint("DB contents:",  0)
     for k in DictDB.keys():
-        print(" " + k + " : " + str(DictDB[k]))
+        DebugPrint(" " + k + " : " + str(DictDB[k]),  0)
 
 # -----
 # ReportStats - useful for debug
 # ------
 def ReportStats():
-    print("Statistics:")
+    DebugPrint("Statistics:",  0)
     for k in StatsDB.keys():
-        print(" " + k + " : " + str(StatsDB[k]))
+        DebugPrint(" " + k + " : " + str(StatsDB[k]),  0)
 
 
 # --- private -------------------------------------------------
@@ -246,14 +248,14 @@ def UpdateStatsDel(ftype):
 # look at the file name, file directory path, EXIF info, etc
 #-----
 def Analyze(file,  fileEntry):
-    print("Analyzing " + file)
+    DebugPrint("Analyzing " + file,  1)
     fileEntry['Analyzed'] = 1
     
     dateStat = FindDateFromStat(file)
     dateDir = FindDateFromDirectory(file)
     dateFile = FindDateFromFilename(file)
     dateEXIF = FindDateFromEXIF(file)
-    print("Analyzing: " + str(dateStat) + " : " + str(dateDir) + " : " + str(dateFile) + " : " + str(dateEXIF))
+    DebugPrint("Analyzing: " + str(dateStat) + " : " + str(dateDir) + " : " + str(dateFile) + " : " + str(dateEXIF),  2)
     fileEntry['DateStat'] = dateStat
     fileEntry['DateDir'] = dateDir
     fileEntry['DateFile'] = dateFile
@@ -280,7 +282,7 @@ def FindDateFromEXIF(file):
         day = int(m.group(3))
         success = 1
     except Exception as e:
-        print("No EXIF")
+        ErrorPrint("No EXIF")
     return [success,  year,  month,  day]
     
 def FindDateFromDirectory(file):
@@ -311,7 +313,7 @@ def regexFileDate(string):
         day = int(m.group(2))
         success = 1
     except Exception as e:
-        print("No name in the directory")
+        ErrorPrint("No name in the directory")
     return [success,  year,  month,  day]
 
 
@@ -339,17 +341,26 @@ def DetermineLikelyDate(fileEntry):
             max = current
             maxCount = hist[current]
             success,  year,  month,  day = fileEntry[key]
-    print (str(hist))
-    print ("max is " + str(maxCount) + " " + max)
+    DebugPrint (str(hist),  3)
+    DebugPrint ("max is " + str(maxCount) + " " + max,  3)
     
     if (len(hist) > 1):
         # see if top two are a match
         listKeys = list(hist.keys())
-        print(str(listKeys))
+        DebugPrint(str(listKeys),  3)
         if (hist[listKeys[1]] == maxCount):
-            print("We have a tie!")
+            ErrorPrint("We have a tie!")
     # second priority order
     
     
     return [success,  year,  month,  day]
     
+# a quick little function that cleans up the debug prints throughout the code
+# example: if verbose is at 3, it prints everything
+# if at v=1, then only general function flow is printed
+def DebugPrint(printString,  printLevel):
+    if (printLevel >= verboseLevel):
+        print(printString)
+# later if we want to do something due to errors
+def ErrorPrint(printString):
+    print(printString)

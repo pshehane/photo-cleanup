@@ -7,7 +7,7 @@ import MediaDB
 # create and destroy
 def test1():
     print("Running test1-----------------------")
-    MediaDB.InitDB()
+    MediaDB.InitDB(4)
     MediaDB.CleanupDB()
     print("Finished test1......................")
     return 0
@@ -15,7 +15,7 @@ def test1():
 # create, add, and destroy
 def test2(file):
     print("Running test2-----------------------")
-    MediaDB.InitDB()
+    MediaDB.InitDB(4)
     MediaDB.AddFileToDB(file)
     MediaDB.ReportStats()
     MediaDB.DumpDB()
@@ -26,7 +26,7 @@ def test2(file):
 # create, add, remove, and destroy
 def test3(file):
     print("Running test3----------------------")
-    MediaDB.InitDB()
+    MediaDB.InitDB(4)
     MediaDB.AddFileToDB(file)
     MediaDB.ReportStats()
     MediaDB.DumpDB()
@@ -40,7 +40,7 @@ def test3(file):
 # create, add, add duplicate, remove, and destroy
 def test4(file):
     print("Running test4----------------------")
-    MediaDB.InitDB()
+    MediaDB.InitDB(4)
     print("-Adding 1 " + file)
     MediaDB.AddFileToDB(file)
     print("-Adding 2 " + file)
@@ -59,7 +59,7 @@ def test4(file):
 # test the UpdateDB function
 def test5(file):
     print("Running test5-----------------------")
-    MediaDB.InitDB()
+    MediaDB.InitDB(4)
     MediaDB.AddFileToDB(file)
     MediaDB.ReportStats()
     MediaDB.DumpDB()
@@ -74,8 +74,8 @@ def test5(file):
 
 # test the UpdateDB function
 def test6(fileList):
-    print("Running test5-----------------------")
-    MediaDB.InitDB()
+    print("Running test6-----------------------")
+    MediaDB.InitDB(0)
     for file in fileList:
         MediaDB.AddFileToDB(file)
     MediaDB.ReportStats()
