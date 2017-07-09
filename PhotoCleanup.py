@@ -17,90 +17,14 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QWidget, QFileDialog, QLabel, QPushButton
 from PyQt5.QtWidgets import QHBoxLayout,QVBoxLayout, QScrollArea
-from PyQt5.QtGui import QPainter, QColor
-#from PyQt5.QtGui import QPen
 from PyQt5.QtWidgets import QMainWindow, QAction
-#from PyQt5.QtWidgets import QInputDialog, QLineEdit, QMenuBar
-#from PyQt5.QtGui import QIcon
-#from PyQt5.QtCore import QRect
-from PyQt5.QtCore import Qt,  QSize
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtGui import *
-import math
+from PyQt5.QtCore import Qt
 import os
 import MediaDB
-
-class PaintWidget(QWidget):
-    clicked = pyqtSignal()
-    
-    def __init__(self):
-        super().__init__()
-        self.color = QColor(0, 0, 0)
-        self.init_ui()
-        self.theTree = {}
-        self.myWidth = 500
-        self.myHeight = 70
-        
-    def init_ui(self):
-        print("paint init")
-    def paintEvent(self, event):
-        print("paint")
-        qp = QPainter(self)
-        qp.begin(self)
-        qp.fillRect(event.rect(),  QBrush(self.color))
-        self.drawTree(qp)
-        qp.end()
-        
-    def mousePressEvent(self, event):
-        self.setFocus(Qt.OtherFocusReason)
-        event.accept()
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.color = QColor(self.color.green(), self.color.blue(),
-                                127 - self.color.red())
-            self.update()
-            self.clicked.emit()
-            event.accept()
-    def sizeHint(self):    
-        return QSize(self.myWidth,  self.myHeight)
-    def setTree(self,  treeDict):
-        print("tree")
-        self.theTree = treeDict
-    def drawTree(self,  qp):
-        x = 0
-        y = 0
-        count = len(self.theTree.keys()) + 1
-        print("Count:" + str(count))
-        maxArea = self.myWidth * self.myHeight
-        boxArea = maxArea / count
-        print("Area:" + str(maxArea) + " " + str(boxArea))
-        boxSide = int(math.sqrt(boxArea))
-        print("Box side: " + str(boxSide))
-        
-        for k in self.theTree.keys():
-            #print("k:" + str(k) + " val:" + str(self.theTree[k]))
-            if (self.theTree[k] == 0):
-                c = Qt.white
-            elif (self.theTree[k] == 1):
-                c = Qt.blue
-            else: # 2
-                c = Qt.red
-            qp.setPen(c)
-            qp.fillRect(x,  y,  boxSide,  boxSide,  c)
-            qp.setPen(Qt.black)
-            qp.drawRect(x,  y,  boxSide,  boxSide)
-            
-            x = x+boxSide
-            if (x > self.myWidth):
-                y = y+boxSide
-                x = 0
-            if (y > self.myHeight):
-                y = 0
 
 class MainWidget(QWidget):
     def __init__(self):
         super().__init__()
-        os.chdir('C:\\')
         self.FileCounter = 0
         self.DictSearchDirectories = {}
         self.DictFiles = {}
@@ -129,10 +53,7 @@ class MainWidget(QWidget):
         self.selectedDirectories = QLabel("Click to remove search directories")
         analyzeButton = QPushButton("Analyze")
 
-        self.paintWidget = PaintWidget()
-        
         h_box = QHBoxLayout()
-        #h_box.addStretch()
         h_box.addWidget(addButton)
         h_box.addWidget(self.directoriesFound)
         h_box.addStretch()
@@ -150,7 +71,6 @@ class MainWidget(QWidget):
         h2_box.addStretch()
         h2_box.addStretch()
         v_box.addWidget(self.outputScroll)
-        v_box.addWidget(self.paintWidget)
         v_box.addStretch()
         v_box.addStretch()
         self.setLayout(v_box)
@@ -158,8 +78,6 @@ class MainWidget(QWidget):
         addButton.clicked.connect(self.addButtonClicked)
         searchButton.clicked.connect(self.searchButtonClicked)
         analyzeButton.clicked.connect(self.analyzeButtonClicked)
-
-        self.paintWidget.update()
 
         self.show()
 
@@ -265,8 +183,6 @@ class MainWidget(QWidget):
             outstring = "No files matching"
         print(outstring)
         self.outputText.setText(outstring)
-        self.paintWidget.setTree(view)
-        self.paintWidget.repaint()
             
         MediaDB.UpdateDB()
         MediaDB.CreateRecommendedTree()
@@ -338,6 +254,9 @@ class PhotoCleanupApp(QMainWindow):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
+    # to help with debugging - i can set the default start directory
+    if (len(sys.argv) == 3):
+        os.chdir(sys.argv[2])
     MediaDB.InitDB(0) # -- initialize the MediaDB
     mainwindow = PhotoCleanupApp()
     #MediaDB.CleanupDB() # -- cleanup the MediaDB - in case we later support restarting the context
