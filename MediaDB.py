@@ -156,9 +156,8 @@ def CreateRecommendedTree():
             entry = DictDB.get(k, 0)
             isAnalyzed = entry.get('Analyzed',  0)
             if (isAnalyzed == 1):
-                tSuccess,  tYear,  tMonth,  tDay = DetermineLikelyDate(entry)
+                tSuccess,  tYear,  tMonth,  tDay = DetermineLikelyDate(entry,  k)
                 sYear = "%(y)04d" % {"y" : tYear}
-                #sMonth = "%(m)02d_%(d)02d" % {"m" : tMonth,  "d"  : tDay}
                 sMonth = "%(m)02d" % {"m" : tMonth,  "d"  : tDay}
                 sDay = "%(d)02d" % {"m" : tMonth,  "d"  : tDay}
                 
@@ -288,7 +287,7 @@ def FindDateFromEXIF(file):
     except Exception as e:
         frameinfo = getframeinfo(currentframe())
         errorInfo = str(frameinfo.filename) + ":" + str(frameinfo.lineno) + "> "
-        ErrorPrint(errorInfo+"No EXIF")
+        ErrorPrint(errorInfo+"No EXIF tag in file:" + file)
     return [success,  year,  month,  day]
     
 def FindDateFromDirectory(file):
@@ -321,11 +320,11 @@ def regexFileDate(string):
     except Exception as e:
         frameinfo = getframeinfo(currentframe())
         errorInfo = str(frameinfo.filename) + ":" + str(frameinfo.lineno) + "> "
-        ErrorPrint(errorInfo + "No name in the directory")
+        ErrorPrint(errorInfo + "No dateinfo in the string: " + string)
     return [success,  year,  month,  day]
 
 
-def DetermineLikelyDate(fileEntry):
+def DetermineLikelyDate(fileEntry,  filename):
     success,  year,  month,  day = 0,  0,  0,  0
     #scoring method
     # first histogram the 4 possible dates
@@ -349,8 +348,6 @@ def DetermineLikelyDate(fileEntry):
             max = current
             maxCount = hist[current]
             success,  year,  month,  day = fileEntry[key]
-    DebugPrint (str(hist),  3)
-    DebugPrint ("max is " + str(maxCount) + " " + max,  3)
     
     if (len(hist) > 1):
         # see if top two are a match
@@ -359,7 +356,9 @@ def DetermineLikelyDate(fileEntry):
         if (hist[listKeys[1]] == maxCount):
             frameinfo = getframeinfo(currentframe())
             errorInfo = str(frameinfo.filename) + ":" + str(frameinfo.lineno) + "> "
-            ErrorPrint(errorInfo + "We have a tie!")
+            ErrorPrint(errorInfo + "We have a tie! " + filename)
+            DebugPrint (str(hist),  0)
+            DebugPrint ("max is " + str(maxCount) + " " + max,  0)
     # second priority order
     
     
