@@ -52,6 +52,11 @@ class MainWidget(QWidget):
         self.outputScroll.setWidget(self.outputText)
         self.selectedDirectories = QLabel("Click to remove search directories")
         analyzeButton = QPushButton("Analyze")
+        self.resultsText = QLabel("")
+        self.resultsScroll = QScrollArea()
+        self.resultsScroll.setFixedHeight(400)
+        self.resultsScroll.setWidgetResizable(True)
+        self.resultsScroll.setWidget(self.resultsText)
 
         h_box = QHBoxLayout()
         h_box.addWidget(addButton)
@@ -71,7 +76,7 @@ class MainWidget(QWidget):
         h2_box.addStretch()
         h2_box.addStretch()
         v_box.addWidget(self.outputScroll)
-        v_box.addStretch()
+        v_box.addWidget(self.resultsScroll)
         v_box.addStretch()
         self.setLayout(v_box)
         
@@ -122,71 +127,14 @@ class MainWidget(QWidget):
         self.analyzeFiles()
 
     def analyzeFiles(self):
-        view = {}  # traverse and tag, so we can visualize
-        sizes = {} # as we traverse hash by size
-        names = {} # as we traverse hash by name
-
-        countOfItems = 0
-        candidates = {}
-        doppleganger = {}
         for dirList in self.DictFiles.keys():
-            #print(dirList)
             for file in self.DictFiles.get(dirList):
                 MediaDB.AddFileToDB(file)
-                #print(file)
-                (path,name) = os.path.split(file)
-                if (names.get(name, 0) == 0):
-                     names[name] = [] # start the dictionary
-                     view[file] = 0;
-                else:
-                     # duplicate name found!  remember it
-                     candidates[file] = 'name'
-                     doppleganger[file] = names[name]
-                     view[file] = 1
-                     countOfItems += 1
-                names[name].append(file)
 
-                fsize = os.path.getsize(file)
-                if (sizes.get(fsize, 0) == 0):
-                     #print("start " + str(fsize) + " " + file)
-                     sizes[fsize] = [] # start the dictionary
-                else:
-                    # duplicate size found see if already
-                    # in the candidate list
-                    if (candidates.get(file, 0) == 0):
-                        candidates[file] = 'size'
-                        view[file] += 1
-                    else:
-                        # both duplicate size and name
-                        candidates[file] = 'name|size'
-                        mtime = os.path.getmtime(file)
-                        fn = sizes[fsize][0]
-                        mtime2 = os.path.getmtime(fn)
-                        if (mtime == mtime2):
-                            candidates[file] = 'name|size|date'
-                            view[file] += 1
-                    doppleganger[file] = sizes[fsize]
-                    countOfItems += 1
-                sizes[fsize].append(file)
-
-        outstring = ""
-        for dupesKey in candidates.keys():
-            outstring += "File: "
-            outstring += dupesKey
-            outstring += " matched "
-            outstring += candidates[dupesKey]
-            outstring += "\n"
-            for fname in doppleganger[dupesKey]:
-                outstring += "\t" + fname + "\n"
-            outstring += "\n"
-        if (countOfItems == 0):
-            outstring = "No files matching"
-        print(outstring)
-        self.outputText.setText(outstring)
-            
+        #self.outputText.setText(outstring)
         MediaDB.UpdateDB()
         MediaDB.CreateRecommendedTree()
-
+        self.resultsText.setText(MediaDB.GetRecommendedTreeString())
 
     def saveFileDialog(self):
         options = QFileDialog.Options()
@@ -210,7 +158,6 @@ def get_filepaths(directory, theDict):
             the_name, the_extension = os.path.splitext(filename)
             lc_extension = the_extension.lower()
             filetype = theDict.get(lc_extension,"0")
-            #print("found: " + the_name + " " + the_extension + " " + filetype)
             if filetype != "0":
                 # Join the two strings in order to form the full filepath.
                 filepath = os.path.join(root, filename)
