@@ -34,6 +34,10 @@ StatsDB = {}
 # data structure to hold global variables
 Globals = {}
 
+# Picasa Data
+# store the info from picasa both global and image specific
+# we will have to reconstruct the file if files move
+PicasaDB = {}
 
 
 #---------------------
@@ -51,7 +55,12 @@ def InitDB(requestedVerboseLevel):
     StatsDB["Collision count"] = 0 # when files are duplicate
     StatsDB["Total files"] = 0        # incremented for all files put into the DB
     StatsDB["Error"] = 0                  # for easy lookup from stats DB
+    StatsDB["DateFromEXIF"] = 0 # debug - how many came from EXIF
+    StatsDB["DateFromStat"] = 0 # debug - how many came from Stat
+    StatsDB["DateFromDir"] = 0  # debug - how many came from Dir
+    StatsDB["DateFromFile"] = 0 # debug - how many came from File
     SortDB["RootNode"] = Node("top")
+    PicasaDB["Contacts2"] = {} # list
 
 #---------------------
 # CleanupDB
@@ -78,6 +87,8 @@ def AddFileToDB(file,  dir):
     # is this a file we care about? otherwise ignore
     ftype = IsImagingFile(file)
     if (ftype != '0'):
+        if (ftype == 'i'):
+            parseIni(file, dir)
         hashname = hashlib.md5(file.encode('utf-8')).hexdigest()
         entry = DictDB.get(hashname, 0)
         if (entry == 0):
@@ -85,6 +96,7 @@ def AddFileToDB(file,  dir):
             DictDB[hashname]['RefCount'] = 1
             DictDB[hashname]['Name'] = file
             DictDB[hashname]['Directory']= dir
+            DictDB[hashname]['FileType'] = ftype
             # if this is the first time we see this file then treat as unique, otherwise, collision occurred
             StatsDB["Total files"] = StatsDB["Total files"] + 1
             UpdateStatsAdd(ftype)
@@ -95,7 +107,6 @@ def AddFileToDB(file,  dir):
                 errorInfo = str(frameinfo.filename) + ":" + str(frameinfo.lineno) + "> "
                 ErrorPrint (errorInfo + "Error! zero refcount is unexpected")
             DictDB[hashname]['RefCount'] = count + 1
-            DictDB[hashname]['FileType'] = ftype
             StatsDB["Collision count"] = StatsDB["Collision count"] + 1
     return count
 
@@ -230,6 +241,7 @@ def OutputJson(outputName):
     SuperStructure = {}
     SuperStructure['DictDB'] = DictDB
     SuperStructure['StatsDB'] = StatsDB
+    SuperStructure['PicasaDB'] = PicasaDB
 
     jsonFile = open(outputName, "w")
     jstr = json.dumps(SuperStructure, sort_keys=True,
@@ -296,6 +308,14 @@ def Analyze(hashname,  fileEntry):
     fileEntry['DateDir'] = dateDir
     fileEntry['DateFile'] = dateFile
     fileEntry['DateEXIF'] = dateEXIF
+    if (dateStat[0]):
+        StatsDB['DateFromStat'] = StatsDB['DateFromStat'] + 1
+    if (dateEXIF[0]):
+        StatsDB['DateFromEXIF'] = StatsDB['DateFromEXIF'] + 1
+    if (dateDir[0]):
+        StatsDB['DateFromDir'] = StatsDB['DateFromDir'] + 1
+    if (dateFile[0]):
+        StatsDB['DateFromFile'] = StatsDB['DateFromFile'] + 1
 
 #-- 
 # Find Date functions - each will return a standard  (success, YYYY,MM,DD)  array
@@ -325,11 +345,11 @@ def FindDateFromEXIF(file):
     
 def FindDateFromDirectory(file):
     root,  filename = os.path.split(file)
-    return regexFileDate(root) # check the root path
+    return regexFileDate1(root) # check the root path
     
 def FindDateFromFilename(file):
     root,  filename = os.path.split(file)
-    return regexFileDate(filename) # check the filename itself
+    return regexFileDate1(filename) # check the filename itself
 
 def FindDateFromStat(file):
     print("FindDateFromStat:" + file)
@@ -344,9 +364,13 @@ def FindDateFromStat(file):
 # that looks like a date string
 
 RegExPatterns = {
-        '([0-9][0-9]?)-([0-9][0-9]?)-([12][09][0-9][0-9])' : [ 2,  1,  3],  # MM-DD-YYYY
-        '([0-9][0-9]?)_([0-9][0-9]?)_([12][09][0-9][0-9])' : [ 2,  1,  3],  # MM_DD_YYYY
-        '([12][09][0-9][0-9])-([0-9][0-9]?)-([0-9][0-9]?)' : [ 3,  1,  2],  # YYYY-MM-DD
+        ## Use 3 parens to select (1st) (2nd) (3rd) and then label:
+        ##  YY , MM, DD with where to find it. 
+        ##     Example: 2013-4-17  (xxxx)-(x)-(xx) and 1, 2, 3
+        ##     Example: 4-17-2013  (x)-(xx)-(xxxx) and 3, 1, 2
+        '([0-9][0-9]?)-([0-9][0-9]?)-([12][09][0-9][0-9])' : [ 3,  1,  2],  # MM-DD-YYYY
+        '([0-9][0-9]?)_([0-9][0-9]?)_([12][09][0-9][0-9])' : [ 3,  1,  2],  # MM_DD_YYYY
+        '([12][09][0-9][0-9])-([0-9][0-9]?)-([0-9][0-9]?)' : [ 1,  2,  3],  # YYYY-MM-DD
     }
 
 
@@ -370,14 +394,15 @@ def regexFileDate1(string):
     year,  month,  day = 0,  0,  0
     for key in RegExPatterns.keys():
         regPattern = key
-        m = re.search(regPattern,  string)
+        m = re.search(".*" + regPattern + ".*",  string)
         try:
             indexYear,  indexMonth,  indexDay = RegExPatterns[key]
             year = int(m.group(indexYear))
             month = int(m.group(indexMonth))
             day = int(m.group(indexDay))
             success = 1
-        except Exception as e:
+            break
+        except AttributeError as e:
             frameinfo = getframeinfo(currentframe())
             errorInfo = str(frameinfo.filename) + ":" + str(frameinfo.lineno) + "> "
             ErrorPrint(errorInfo + "No dateinfo in the string: " + string + " using " + regPattern)
@@ -429,6 +454,63 @@ def DetermineLikelyDate(fileEntry,  filename):
     
     
     return [success,  year,  month,  day]
+
+def parseIni(filename, directory):
+    # we will only process the properly named picasa ini file
+
+    if (os.path.basename(filename) != ".picasa.ini"):
+        ErrorPrint("Skipping processing: " + filename + " : " + directory)
+        return
+    lines = [line.rstrip('\n') for line in open(filename)]
+    mode = 0  # 0=idle, 1=contacts, 2=image
+    hashname = "" # remember the image name's hash
+    for l in lines:
+        print("line: " + l)
+        nameInLine = re.search("^\[([^\]]+)\]$", l)
+        print(" --- " + str(nameInLine))
+        if (l == "[Contacts2]"):
+            print("Mode: Contacts2")
+            mode = 1 # contacts
+        elif (nameInLine != None):
+            print("Mode: Image")
+            mode = 2 # image info
+            imageName = nameInLine.group(1)
+            fullImageName = os.path.join(directory, imageName)
+            hashname = hashlib.md5(fullImageName.encode('utf-8')).hexdigest()
+            entry = PicasaDB.get(hashname, 0)
+            if (entry == 0):
+                PicasaDB[hashname] = {}
+                PicasaDB[hashname]["Name"] = fullImageName
+                PicasaDB[hashname]["Directory"] = directory
+                PicasaDB[hashname]["RefCount"] = 1
+            else:
+                count = PicasaDB[hashname].get('RefCount',  0)
+                if (count == 0):
+                    frameinfo = getframeinfo(currentframe())
+                    errorInfo = str(frameinfo.filename) + ":" + str(frameinfo.lineno) + "> "
+                    ErrorPrint (errorInfo + "Error! zero refcount is unexpected")
+                PicasaDB[hashname]['RefCount'] = count + 1
+        else: # normal line, so pull according to state
+            print("Mode: key=value")
+            m = re.search("^([a-z0-9]+)=(.+)$", l)
+            try:
+                phash = m.group(1)
+                pcontent = m.group(2)
+                if (mode == 1):
+                    PicasaDB['Contacts2'][phash] = pcontent
+                elif (mode == 2):
+                    print("add to "+ fullImageName)
+                    entry = PicasaDB[hashname].get(phash, 0)
+                    if (entry == 0):
+                        PicasaDB[hashname][phash] = pcontent
+                    else:
+                        if (entry != pcontent):
+                            ErrorPrint("Overwriting picasa data! Mismatch!")
+                            print("Overwriting: " + entry + "::" + pcontent)
+            except AttributeError as e:
+                pass
+
+
     
 # a quick little function that cleans up the debug prints throughout the code
 # example: if verbose is at 3, it prints everything
