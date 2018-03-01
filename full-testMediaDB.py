@@ -8,17 +8,18 @@ from anytree import  Node,  RenderTree
 
 
 # test the functionality with a rich set of input
-def test(dirList):
+def test(dirList, outputJsonName):
     print("Running test-----------------------")
     MediaDB.InitDB(3)
     for theDir in dirList:
         for root, directories, files in os.walk(theDir):
             for filename in files:
-                print("--> Adding: ",  filename,  "theDir: ",  theDir)
-                print("root: ",  root)
-                MediaDB.AddFileToDB(filename,  root)
+                fullname = os.path.join(root, filename)
+                print("--> Adding: ",  fullname)
+                MediaDB.AddFileToDB(fullname, root)
     MediaDB.ReportStats()
     MediaDB.DumpDB()
+    MediaDB.OutputJson(outputJsonName)
     MediaDB.UpdateDB()
     MediaDB.CreateRecommendedTree()
     outputString = MediaDB.GetRecommendedTreeString()
@@ -29,13 +30,15 @@ def test(dirList):
     
 def main():
     errors = 0
-    if (len(sys.argv) < 2):
-        print("Please give a text file with a list of directories on the command line")
+    if (len(sys.argv) < 3):
+        print("Missing arguments, need directory list and json output.")
+        print("test.py folderlist.txt json-output.txt")
     else:
         textfilename = sys.argv[1]
+        jsonfilename = sys.argv[2]
         dirs = [line.rstrip('\n') for line in open(textfilename)]
         print (dirs)
-        errors = test(dirs)
+        errors = test(dirs, jsonfilename)
         print("All tested completed, Errors: " + str(errors))
 
 main()

@@ -4,6 +4,7 @@
 # 
 
 import os
+import hashlib
 import datetime
 import re
 import exifread
@@ -51,7 +52,6 @@ def InitDB(requestedVerboseLevel):
     StatsDB["Error"] = 0                  # for easy lookup from stats DB
     SortDB["RootNode"] = Node("top")
 
-
 #---------------------
 # CleanupDB
 # call to clean up, for instance if the UI needs to
@@ -61,6 +61,7 @@ def CleanupDB():
     DictDB.clear()
     SortDB.clear()
     StatsDB.clear()
+
 #---------------------
 # AddFileToDB
 # call to add a file to the DB.
@@ -70,26 +71,30 @@ def CleanupDB():
 #--------------------
 def AddFileToDB(file,  dir):
     count = -1
-    DebugPrint("Adding <" + file + "> from <" + dir + "> to DB",  3)
+    
+    DebugPrint("Adding <" + file + "> to DB",  3)
+
+    # is this a file we care about? otherwise ignore
     ftype = IsImagingFile(file)
     if (ftype != '0'):
-        entry = DictDB.get(file, 0)
+        hashname = hashlib.md5(file.encode('utf-8')).hexdigest()
+        entry = DictDB.get(hashname, 0)
         if (entry == 0):
-            #DictDB[file] = count+1
-            DictDB[file] = {}
-            DictDB[file]['RefCount'] = 1
-            DictDB[file]['Directory']= dir
+            DictDB[hashname] = {}
+            DictDB[hashname]['RefCount'] = 1
+            DictDB[hashname]['Name'] = file
+            DictDB[hashname]['Directory']= dir
             # if this is the first time we see this file then treat as unique, otherwise, collision occurred
             StatsDB["Total files"] = StatsDB["Total files"] + 1
             UpdateStatsAdd(ftype)
         else:
-            count = DictDB[file].get('RefCount',  0)
+            count = DictDB[hashname].get('RefCount',  0)
             if (count == 0):
                 frameinfo = getframeinfo(currentframe())
                 errorInfo = str(frameinfo.filename) + ":" + str(frameinfo.lineno) + "> "
-                ErrorPrint (errorInfo + "Error! we should not have gotten a zero")
-            DictDB[file]['RefCount'] = count + 1
-            DictDB[file]['FileType'] = ftype
+                ErrorPrint (errorInfo + "Error! zero refcount is unexpected")
+            DictDB[hashname]['RefCount'] = count + 1
+            DictDB[hashname]['FileType'] = ftype
             StatsDB["Collision count"] = StatsDB["Collision count"] + 1
     return count
 
@@ -98,10 +103,11 @@ def AddFileToDB(file,  dir):
 # Return count of items with supplied name
 #--------------------
 def CheckFileInDB(file):
+    hashname = hashlib.md5(file.encode('utf-8')).hexdigest()
     DebugPrint("Checking <" + file + "> is in DB",  3)
-    count = DictDB.get(file,  0) 
+    count = DictDB.get(hashname,  0) 
     if (count != 0):
-        count = DictDB[file]['RefCount']
+        count = DictDB[hashname]['RefCount']
     return count
 
 #---------------------
@@ -113,23 +119,23 @@ def CheckFileInDB(file):
 #--------------------    
 def RemoveFileFromDB(file):
     DebugPrint("Removing <" + file + "> from DB",  3)
-    entry = DictDB.get(file, 0)
+    hashname = hashlib.md5(file.encode('utf-8')).hexdigest()
+    entry = DictDB.get(hashname, 0)
     if (entry == 0): 
         # error
         frameinfo = getframeinfo(currentframe())
         errorInfo = str(frameinfo.filename) + ":" + str(frameinfo.lineno) + "> "
         ErrorPrint(errorInfo + "Unknown file: "+ file)
     else:
-        count = DictDB[file]['RefCount']
+        count = DictDB[hashname]['RefCount']
         if (count > 1):
             # decrement reference count
-            #DictDB[file] = count - 1
-            DictDB[file]['RefCount'] = count - 1
+            DictDB[hashname]['RefCount'] = count - 1
             StatsDB["Collision count"] = StatsDB["Collision count"] - 1
         else:
             ftype = IsImagingFile(file)
             UpdateStatsDel(ftype)
-            del DictDB[file]
+            del DictDB[hashname]
             StatsDB["Total files"] = StatsDB["Total files"] - 1
 
 #----------------------
@@ -156,8 +162,9 @@ def CreateRecommendedTree():
     for k in DictDB.keys():
             entry = DictDB.get(k, 0)
             isAnalyzed = entry.get('Analyzed',  0)
+            fullname = entry.get('Name', "(null)")
             if (isAnalyzed == 1):
-                tSuccess,  tYear,  tMonth,  tDay = DetermineLikelyDate(entry,  k)
+                tSuccess,  tYear,  tMonth,  tDay = DetermineLikelyDate(entry, fullname)
                 sYear = "%(y)04d" % {"y" : tYear}
                 sMonth = "%(m)02d" % {"m" : tMonth,  "d"  : tDay}
                 sDay = "%(d)02d" % {"m" : tMonth,  "d"  : tDay}
@@ -182,7 +189,7 @@ def CreateRecommendedTree():
                         NodeDict[hashForNode] = dayNode
                     else:
                         dayNode = NodeDict[hashForNode]
-                    rootpath,  filename = os.path.split(k)
+                    rootpath,  filename = os.path.split(fullname)
                     fileNode = Node(filename,  parent=dayNode)
                 else:
                     # this first attempt, though cleaner, appears to make duplicate nodes side by side under the same parent.
@@ -190,7 +197,7 @@ def CreateRecommendedTree():
                     yearNode = Node(sYear,  parent=rootNode)
                     monthNode = Node(sMonth,  parent=yearNode)
                     dayNode = Node(sDay,  parent=monthNode)
-                    rootpath,  filename = os.path.split(k)
+                    rootpath,  filename = os.path.split(fullname)
                     fileNode = Node(filename,  parent=dayNode)
                 DebugPrint(str(fileNode),  3)
     DebugPrint("Print Tree:",  4)
@@ -211,7 +218,15 @@ def GetRecommendedTreeString():
 def DumpDB():
     DebugPrint("DB contents:",  0)
     for k in DictDB.keys():
-        DebugPrint(" " + k + " : " + str(DictDB[k]),  0)
+        stringOut = " " + k + " : " + str(DictDB[k])
+        #stringOut = stringOut + " : " + DictDB[k]
+        DebugPrint(stringOut,  0)
+
+# -----
+# OutputJson
+# -----
+def OutputJson(outputName):
+    print ("implement json here")
 
 # -----
 # ReportStats - useful for debug
@@ -257,11 +272,12 @@ def UpdateStatsDel(ftype):
 # Analyze - where all the work will be!
 # look at the file name, file directory path, EXIF info, etc
 #-----
-def Analyze(file,  fileEntry):
-    DebugPrint("Analyzing " + file,  1)
+def Analyze(hashname,  fileEntry):
+    filename = fileEntry.get('Name', "(null)")
+    DebugPrint("Analyzing " + filename,  1)
     fileEntry['Analyzed'] = 1
-    theDir = fileEntry.get('Directory',  "C:\1234\\")
-    theFile = theDir + "\\" + file
+    theDir = fileEntry.get('Directory',  "(nulldir)")
+    theFile = filename
     dateStat = FindDateFromStat(theFile)
     dateDir = FindDateFromDirectory(theFile)
     dateFile = FindDateFromFilename(theFile)
@@ -372,6 +388,8 @@ def DetermineLikelyDate(fileEntry,  filename):
         elif (key == "Analyzed"):
             continue
         elif (key == "Directory"):
+            continue
+        elif (key == "Name"):
             continue
         elif (key == "FileType"):
             continue
