@@ -4,6 +4,7 @@
 # 
 
 import os
+import json
 import hashlib
 import datetime
 import re
@@ -226,7 +227,15 @@ def DumpDB():
 # OutputJson
 # -----
 def OutputJson(outputName):
-    print ("implement json here")
+    SuperStructure = {}
+    SuperStructure['DictDB'] = DictDB
+    SuperStructure['StatsDB'] = StatsDB
+
+    jsonFile = open(outputName, "w")
+    jstr = json.dumps(SuperStructure, sort_keys=True,
+                      indent=4, separators=(',', ': '))
+    jsonFile.write(jstr)
+    jsonFile.close()
 
 # -----
 # ReportStats - useful for debug
