@@ -83,7 +83,7 @@ def test6(fileList):
     MediaDB.UpdateDB()
     MediaDB.CreateRecommendedTree()
     MediaDB.CleanupDB()    
-    print("Finished test5.....................")
+    print("Finished test6.....................")
     return 0
     
 def main():

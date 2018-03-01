@@ -16,7 +16,7 @@
 #-------------------
 import sys
 from PyQt5.QtWidgets import QApplication, QWidget, QFileDialog, QLabel, QPushButton
-from PyQt5.QtWidgets import QHBoxLayout,QVBoxLayout, QScrollArea
+from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QScrollArea
 from PyQt5.QtWidgets import QMainWindow, QAction
 from PyQt5.QtCore import Qt
 import os
@@ -105,13 +105,10 @@ class MainWidget(QWidget):
 
     def searchButtonClicked(self):
         self.FileCounter = 0
-        #print (self.DictSearchDirectories.keys())
         for theDir in self.DictSearchDirectories.keys():
-            #file_paths = get_filepaths(theDir, self.DictExtensions)
             for root, directories, files in os.walk(theDir):
                 for filename in files:
-                    MediaDB.AddFileToDB(filename)
-            #print (file_paths)
+                    MediaDB.AddFileToDB(filename, root)
             self.FileCounter += MediaDB.StatsDB["Total files"];
             self.filesFound.setText(str(self.FileCounter) + " files")
         self.filesFound.setText(str(self.FileCounter) + " files")
@@ -157,8 +154,8 @@ class PhotoCleanupApp(QMainWindow):
 
         mainMenu = self.menuBar()
         fileMenu = mainMenu.addMenu('File')
-        editMenu = mainMenu.addMenu('Options')
-        helpMenu = mainMenu.addMenu('Help')
+        #editMenu = mainMenu.addMenu('Options')
+        #helpMenu = mainMenu.addMenu('Help')
         exitButton = QAction('Exit', self)
         exitButton.setShortcut('Ctrl+Q')
         exitButton.setStatusTip('Exit application')
@@ -179,7 +176,7 @@ if __name__ == '__main__':
     # to help with debugging - i can set the default start directory
     if (len(sys.argv) == 3):
         os.chdir(sys.argv[2])
-    MediaDB.InitDB(0) # -- initialize the MediaDB
+    MediaDB.InitDB(4) # -- initialize the MediaDB
     mainwindow = PhotoCleanupApp()
     #MediaDB.CleanupDB() # -- cleanup the MediaDB - in case we later support restarting the context
     sys.exit(app.exec_())

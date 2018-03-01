@@ -64,13 +64,13 @@ def CleanupDB():
 #---------------------
 # AddFileToDB
 # call to add a file to the DB.
-# no need to worry about sanitizing the input. it will refcount duplicates for instance
-# only "imaging" files are actually added.
+# no need to worry about sanitizing the input. it will refcount
+# duplicates for instance only "imaging" files are actually added.
 # Return count of items    
 #--------------------
-def AddFileToDB(file):
+def AddFileToDB(file,  dir):
     count = -1
-    DebugPrint("Adding <" + file + "> to DB",  3)
+    DebugPrint("Adding <" + file + "> from <" + dir + "> to DB",  3)
     ftype = IsImagingFile(file)
     if (ftype != '0'):
         entry = DictDB.get(file, 0)
@@ -78,6 +78,7 @@ def AddFileToDB(file):
             #DictDB[file] = count+1
             DictDB[file] = {}
             DictDB[file]['RefCount'] = 1
+            DictDB[file]['Directory']= dir
             # if this is the first time we see this file then treat as unique, otherwise, collision occurred
             StatsDB["Total files"] = StatsDB["Total files"] + 1
             UpdateStatsAdd(ftype)
@@ -259,17 +260,17 @@ def UpdateStatsDel(ftype):
 def Analyze(file,  fileEntry):
     DebugPrint("Analyzing " + file,  1)
     fileEntry['Analyzed'] = 1
-    
-    dateStat = FindDateFromStat(file)
-    dateDir = FindDateFromDirectory(file)
-    dateFile = FindDateFromFilename(file)
-    dateEXIF = FindDateFromEXIF(file)
-    DebugPrint("Analyzing: " + str(dateStat) + " : " + str(dateDir) + " : " + str(dateFile) + " : " + str(dateEXIF),  2)
+    theDir = fileEntry.get('Directory',  "C:\1234\\")
+    theFile = theDir + "\\" + file
+    dateStat = FindDateFromStat(theFile)
+    dateDir = FindDateFromDirectory(theFile)
+    dateFile = FindDateFromFilename(theFile)
+    dateEXIF = FindDateFromEXIF(theFile)
+    DebugPrint("Analyzing: Stat:" + str(dateStat) + " DirName:" + str(dateDir) + " FileName:" + str(dateFile) + " EXIF:" + str(dateEXIF),  2)
     fileEntry['DateStat'] = dateStat
     fileEntry['DateDir'] = dateDir
     fileEntry['DateFile'] = dateFile
     fileEntry['DateEXIF'] = dateEXIF
-
 
 #-- 
 # Find Date functions - each will return a standard  (success, YYYY,MM,DD)  array
@@ -279,6 +280,7 @@ def FindDateFromEXIF(file):
     year,  month,  day = 0,  0,  0
     
     f = open(file,  'rb')
+    print("FindDateFromEXIF:" + file)
     tags = exifread.process_file(f)
     # EXIF has two datetime fields, need to research...
     #tag = 'Image DateTime'
@@ -305,6 +307,7 @@ def FindDateFromFilename(file):
     return regexFileDate(filename) # check the filename itself
 
 def FindDateFromStat(file):
+    print("FindDateFromStat:" + file)
     mtime = os.path.getmtime(file)
     mod_timestamp = datetime.datetime.fromtimestamp(mtime)
     year = mod_timestamp.year
@@ -314,6 +317,14 @@ def FindDateFromStat(file):
 
 # Refactored from parent functions that are searching the name or path for anything
 # that looks like a date string
+
+RegExPatterns = {
+        '([0-9][0-9]?)-([0-9][0-9]?)-([12][09][0-9][0-9])' : [ 2,  1,  3],  # MM-DD-YYYY
+        '([0-9][0-9]?)_([0-9][0-9]?)_([12][09][0-9][0-9])' : [ 2,  1,  3],  # MM_DD_YYYY
+        '([12][09][0-9][0-9])-([0-9][0-9]?)-([0-9][0-9]?)' : [ 3,  1,  2],  # YYYY-MM-DD
+    }
+
+
 def regexFileDate(string):
     success = 0
     year,  month,  day = 0,  0,  0
@@ -329,6 +340,24 @@ def regexFileDate(string):
         ErrorPrint(errorInfo + "No dateinfo in the string: " + string)
     return [success,  year,  month,  day]
 
+def regexFileDate1(string):
+    success = 0
+    year,  month,  day = 0,  0,  0
+    for key in RegExPatterns.keys():
+        regPattern = key
+        m = re.search(regPattern,  string)
+        try:
+            indexYear,  indexMonth,  indexDay = RegExPatterns[key]
+            year = int(m.group(indexYear))
+            month = int(m.group(indexMonth))
+            day = int(m.group(indexDay))
+            success = 1
+        except Exception as e:
+            frameinfo = getframeinfo(currentframe())
+            errorInfo = str(frameinfo.filename) + ":" + str(frameinfo.lineno) + "> "
+            ErrorPrint(errorInfo + "No dateinfo in the string: " + string + " using " + regPattern)
+    return [success,  year,  month,  day]
+
 
 def DetermineLikelyDate(fileEntry,  filename):
     success,  year,  month,  day = 0,  0,  0,  0
@@ -341,6 +370,10 @@ def DetermineLikelyDate(fileEntry,  filename):
         if (key == "RefCount"):
             continue
         elif (key == "Analyzed"):
+            continue
+        elif (key == "Directory"):
+            continue
+        elif (key == "FileType"):
             continue
         # skip unsuccessful dates
         if (fileEntry[key][0] == 0):
