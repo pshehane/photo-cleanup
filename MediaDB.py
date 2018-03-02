@@ -181,36 +181,27 @@ def CreateRecommendedTree():
                 sMonth = "%(m)02d" % {"m" : tMonth,  "d"  : tDay}
                 sDay = "%(d)02d" % {"m" : tMonth,  "d"  : tDay}
                 
-                if(1):
-                    # the longer way, but apparently get the right output
-                    hashForNode = sYear
-                    if (NodeDict.get(hashForNode,  0) == 0):
-                        yearNode = Node(sYear,  parent=rootNode)
-                        NodeDict[hashForNode] = yearNode
-                    else:
-                        yearNode = NodeDict[hashForNode]
-                    hashForNode = sYear+sMonth
-                    if (NodeDict.get(hashForNode,  0) == 0):
-                        monthNode = Node(sMonth,  parent=yearNode)
-                        NodeDict[hashForNode] = monthNode
-                    else:
-                        monthNode = NodeDict[hashForNode]
-                    hashForNode = sYear+sMonth+sDay
-                    if (NodeDict.get(hashForNode,  0) == 0):
-                        dayNode = Node(sDay,  parent=monthNode)
-                        NodeDict[hashForNode] = dayNode
-                    else:
-                        dayNode = NodeDict[hashForNode]
-                    rootpath,  filename = os.path.split(fullname)
-                    fileNode = Node(filename,  parent=dayNode)
-                else:
-                    # this first attempt, though cleaner, appears to make duplicate nodes side by side under the same parent.
-                    # so the above was done to hash in a dictionary the already made nodes, and use them as needed
+                # the longer way, but apparently get the right output
+                hashForNode = sYear
+                if (NodeDict.get(hashForNode,  0) == 0):
                     yearNode = Node(sYear,  parent=rootNode)
+                    NodeDict[hashForNode] = yearNode
+                else:
+                    yearNode = NodeDict[hashForNode]
+                hashForNode = sYear+sMonth
+                if (NodeDict.get(hashForNode,  0) == 0):
                     monthNode = Node(sMonth,  parent=yearNode)
+                    NodeDict[hashForNode] = monthNode
+                else:
+                    monthNode = NodeDict[hashForNode]
+                hashForNode = sYear+sMonth+sDay
+                if (NodeDict.get(hashForNode,  0) == 0):
                     dayNode = Node(sDay,  parent=monthNode)
-                    rootpath,  filename = os.path.split(fullname)
-                    fileNode = Node(filename,  parent=dayNode)
+                    NodeDict[hashForNode] = dayNode
+                else:
+                    dayNode = NodeDict[hashForNode]
+                rootpath,  filename = os.path.split(fullname)
+                fileNode = Node(filename,  parent=dayNode)
                 DebugPrint(str(fileNode),  3)
     DebugPrint("Print Tree:",  4)
     DebugPrint(RenderTree(rootNode),  4)
