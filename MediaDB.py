@@ -26,6 +26,7 @@ DictDB = {}
 # key = "YYYY-MM-DD"
 # value = original full path + file name (identical to DictDB, so cross reference possible)
 SortDB = {}
+NewDirDB = {}
 
 # Statistics
 # as we encounter interesting statistics, we initialize in InitDB (please see below for each item)
@@ -47,7 +48,8 @@ PicasaDB = {}
 def InitDB(requestedVerboseLevel):
     print("Initializing DB")
     Globals["VerboseLevel"] = requestedVerboseLevel
-    StatsDB["Metafile count"] = 0   # .ini files, etc
+    StatsDB["Ini count"] = 0   # .ini files, etc
+    StatsDB["Meta count"] = 0   # .moff,.thm files, etc
     StatsDB["Picture count"] = 0     # any still or multi-still image
     StatsDB["Video count"] = 0        # any video sequence
     StatsDB["Raw count"] = 0           # any RAW image files
@@ -61,6 +63,7 @@ def InitDB(requestedVerboseLevel):
     StatsDB["DateFromFile"] = 0 # debug - how many came from File
     SortDB["RootNode"] = Node("top")
     PicasaDB["Contacts2"] = {} # list
+    PicasaDB["Picasa"] = {} # list
 
 #---------------------
 # CleanupDB
@@ -89,6 +92,9 @@ def AddFileToDB(file,  dir):
     if (ftype != '0'):
         if (ftype == 'i'):
             parseIni(file, dir)
+            UpdateStatsAdd(ftype)
+            return 1
+
         hashname = hashlib.md5(file.encode('utf-8')).hexdigest()
         entry = DictDB.get(hashname, 0)
         if (entry == 0):
@@ -108,6 +114,8 @@ def AddFileToDB(file,  dir):
                 ErrorPrint (errorInfo + "Error! zero refcount is unexpected")
             DictDB[hashname]['RefCount'] = count + 1
             StatsDB["Collision count"] = StatsDB["Collision count"] + 1
+    else:
+        ErrorPrint("AddFileToDB: Skipping: " + file)
     return count
 
 #---------------------
@@ -161,6 +169,10 @@ def UpdateDB():
             isAnalyzed = entry.get('Analyzed',  0)
             if (isAnalyzed == 0):
                 Analyze(k,  entry)
+# todo: go back over the DB and look for dependencies
+# -----  .moff, .modd, .thm files need to go with parent of similar name
+# -----  .picasa.ini files
+# -----   ??
 
 #---------------------
 # CreateRecommendedTree
@@ -180,6 +192,10 @@ def CreateRecommendedTree():
                 sYear = "%(y)04d" % {"y" : tYear}
                 sMonth = "%(m)02d" % {"m" : tMonth,  "d"  : tDay}
                 sDay = "%(d)02d" % {"m" : tMonth,  "d"  : tDay}
+
+                newpath = os.path.join(sYear, sMonth, sDay)
+                entry.setdefault('NewDirectory', newpath)
+                NewDirDB['newpath'] = k  # cross reference with 'hashname'
                 
                 # the longer way, but apparently get the right output
                 hashForNode = sYear
@@ -233,6 +249,7 @@ def OutputJson(outputName):
     SuperStructure['DictDB'] = DictDB
     SuperStructure['StatsDB'] = StatsDB
     SuperStructure['PicasaDB'] = PicasaDB
+    SuperStructure['NewDirDB'] = NewDirDB
 
     jsonFile = open(outputName, "w")
     jstr = json.dumps(SuperStructure, sort_keys=True,
@@ -251,18 +268,26 @@ def ReportStats():
 
 # --- private -------------------------------------------------
 
-DictExtensions = {   '.ini':'i', # meta data
+DictExtensions = {   '.ini':'i', # ini data
                                '.jpg':'p' , # still image photo
                                '.tiff':'p',
                                '.bmp':'p',
                                '.arf':'r', # still image raw
+                               '.arw':'r',
                                '.dng':'r',
+                               '.thm':'m', # meta data
+                               '.moff':'m',
+                               '.modd':'m',
                                '.mov':'v', # video
-                               '.mp4':'v', 
+                               '.mp4':'v',
+                               '.mts':'v',
+                               '.mpg':'v',
+                               '.m2ts':'v',
                                '.avi':'v'}
 Map_TypeToStat = {  'p': "Picture count", 
-                                'i': "Metafile count", 
+                                'i': "Ini count",
                                 'r': "Raw count", 
+                                'm': "Meta count",
                                 'v': "Video count", 
                                 '0': "Reject count"}
  
@@ -285,15 +310,15 @@ def UpdateStatsDel(ftype):
 # look at the file name, file directory path, EXIF info, etc
 #-----
 def Analyze(hashname,  fileEntry):
-    filename = fileEntry.get('Name', "(null)")
-    DebugPrint("Analyzing " + filename,  1)
+    theFile = fileEntry.get('Name', "(null)")
+    justFileName = os.path.basename(theFile)
+    DebugPrint("Analyzing " + theFile,  1)
     fileEntry['Analyzed'] = 1
     theDir = fileEntry.get('Directory',  "(nulldir)")
-    theFile = filename
-    dateStat = FindDateFromStat(theFile)
-    dateDir = FindDateFromDirectory(theFile)
-    dateFile = FindDateFromFilename(theFile)
-    dateEXIF = FindDateFromEXIF(theFile)
+    dateStat = FindDateFromStat(theFile) # need full path, accessing file
+    dateDir = FindDateFromDirectory(theDir) # need just dir path
+    dateFile = FindDateFromFilename(justFileName) # need just the name
+    dateEXIF = FindDateFromEXIF(theFile) # need full path, accessing file
     DebugPrint("Analyzing: Stat:" + str(dateStat) + " DirName:" + str(dateDir) + " FileName:" + str(dateFile) + " EXIF:" + str(dateEXIF),  2)
     fileEntry['DateStat'] = dateStat
     fileEntry['DateDir'] = dateDir
@@ -307,6 +332,10 @@ def Analyze(hashname,  fileEntry):
         StatsDB['DateFromDir'] = StatsDB['DateFromDir'] + 1
     if (dateFile[0]):
         StatsDB['DateFromFile'] = StatsDB['DateFromFile'] + 1
+    theParentDir = os.path.basename(theDir)
+    print("Analyze: tag = " + theParentDir)
+    if ('Tag' not in fileEntry):
+        fileEntry['Tag'] = theParentDir
 
 #-- 
 # Find Date functions - each will return a standard  (success, YYYY,MM,DD)  array
@@ -314,13 +343,21 @@ def Analyze(hashname,  fileEntry):
 def FindDateFromEXIF(file):
     success = 0
     year,  month,  day = 0,  0,  0
-    
-    f = open(file,  'rb')
-    print("FindDateFromEXIF:" + file)
-    tags = exifread.process_file(f)
     # EXIF has two datetime fields, need to research...
     #tag = 'Image DateTime'
     tag = 'EXIF DateTimeOriginal'
+
+    f = open(file,  'rb')
+    #print("FindDateFromEXIF:" + file)
+    try:
+        tags = exifread.process_file(f, stop_tag='EXIF DateTimeOriginal', debug=True)
+    except MemoryError:
+        tags = {}
+    except TypeError:
+        tags = {}
+    except IndexError:
+        tags = {}
+    f.close()
     value = tags.get(tag,  "unfound datetime")
     m = re.search('([0-9][0-9][0-9][0-9]):([0-9][0-9]):([0-9][0-9]) ([0-9][0-9]):([0-9][0-9]):([0-9][0-9])',  str(value))
     try:
@@ -335,15 +372,17 @@ def FindDateFromEXIF(file):
     return [success,  year,  month,  day]
     
 def FindDateFromDirectory(file):
+    #print("FindDateFromDir:" + file)
     root,  filename = os.path.split(file)
     return regexFileDate1(root) # check the root path
     
 def FindDateFromFilename(file):
+    #print("FindDateFromFile:" + file)
     root,  filename = os.path.split(file)
     return regexFileDate1(filename) # check the filename itself
 
 def FindDateFromStat(file):
-    print("FindDateFromStat:" + file)
+    #print("FindDateFromStat:" + file)
     mtime = os.path.getmtime(file)
     mod_timestamp = datetime.datetime.fromtimestamp(mtime)
     year = mod_timestamp.year
@@ -361,10 +400,13 @@ RegExPatterns = {
         ##     Example: 4-17-2013  (x)-(xx)-(xxxx) and 3, 1, 2
         '([0-9][0-9]?)-([0-9][0-9]?)-([12][09][0-9][0-9])' : [ 3,  1,  2],  # MM-DD-YYYY
         '([0-9][0-9]?)_([0-9][0-9]?)_([12][09][0-9][0-9])' : [ 3,  1,  2],  # MM_DD_YYYY
+        '^([0-9][0-9]?)([0-9][0-9]?)([12][09][0-9][0-9])' : [ 3,  1,  2],  # MM_DD_YYYY
         '([12][09][0-9][0-9])-([0-9][0-9]?)-([0-9][0-9]?)' : [ 1,  2,  3],  # YYYY-MM-DD
+        '^([12][09][0-9][0-9])([0-9][0-9]?)([0-9][0-9]?)' : [ 1,  2,  3],  # YYYY-MM-DD
     }
 
 
+# original, simple method.  not used
 def regexFileDate(string):
     success = 0
     year,  month,  day = 0,  0,  0
@@ -375,9 +417,10 @@ def regexFileDate(string):
         day = int(m.group(2))
         success = 1
     except Exception as e:
-        frameinfo = getframeinfo(currentframe())
-        errorInfo = str(frameinfo.filename) + ":" + str(frameinfo.lineno) + "> "
-        ErrorPrint(errorInfo + "No dateinfo in the string: " + string)
+        success = 0
+        #frameinfo = getframeinfo(currentframe())
+        #errorInfo = str(frameinfo.filename) + ":" + str(frameinfo.lineno) + "> "
+        #ErrorPrint(errorInfo + "No dateinfo in the string: " + string)
     return [success,  year,  month,  day]
 
 def regexFileDate1(string):
@@ -394,13 +437,36 @@ def regexFileDate1(string):
             success = 1
             break
         except AttributeError as e:
-            frameinfo = getframeinfo(currentframe())
-            errorInfo = str(frameinfo.filename) + ":" + str(frameinfo.lineno) + "> "
-            ErrorPrint(errorInfo + "No dateinfo in the string: " + string + " using " + regPattern)
+            success = 0
+            #frameinfo = getframeinfo(currentframe())
+            #errorInfo = str(frameinfo.filename) + ":" + str(frameinfo.lineno) + "> "
+            #ErrorPrint(errorInfo + "No dateinfo in the string: " + string + " using " + regPattern)
     return [success,  year,  month,  day]
 
 
+# Simple approach to determine best date; Priority assignment
+#  Let us assume:  if EXIF info - then it wins.
+#  If not, then Filename has the info, next Directory name, and finally Stat.
+#  Stat = file creation
 def DetermineLikelyDate(fileEntry,  filename):
+    success,  year,  month,  day = 0,  0,  0,  0
+    if ('DateEXIF' in fileEntry):
+       [success, year, month, day] = fileEntry['DateEXIF']
+    if (success == 0 and 'DateFile' in fileEntry):
+       [success, year, month, day] = fileEntry['DateFile']
+    if (success == 0 and 'DateDir' in fileEntry):
+       [success, year, month, day] = fileEntry['DateDir']
+    if (success == 0 and 'DateStat' in fileEntry):
+       [success, year, month, day] = fileEntry['DateStat']
+    if (success == 0):
+        ErrorPrint("ERROR no date for: " + filename)
+    return [success, year, month, day]
+
+# First approach, which looks at now many dates are the same, and use that
+# concern is, if EXIF is actually more believable, the others could be
+# human error.  EXIF is only wrong if intentionally changed or the device
+# was set to the wrong time/date.
+def VotingBased_DetermineLikelyDate(fileEntry,  filename):
     success,  year,  month,  day = 0,  0,  0,  0
     #scoring method
     # first histogram the 4 possible dates
@@ -408,20 +474,14 @@ def DetermineLikelyDate(fileEntry,  filename):
     max = ""
     maxCount = 0
     for key in fileEntry.keys():
-        if (key == "RefCount"):
-            continue
-        elif (key == "Analyzed"):
-            continue
-        elif (key == "Directory"):
-            continue
-        elif (key == "Name"):
-            continue
-        elif (key == "FileType"):
+        # weed out the keys that are not "Date"
+        if (re.search("Date", key) is None):
             continue
         # skip unsuccessful dates
         if (fileEntry[key][0] == 0):
             continue
         current = str(fileEntry[key])
+        print ("current: " + current)
         if (hist.get(current,  0) == 0):
             hist[current] = 1
         else:
@@ -442,28 +502,26 @@ def DetermineLikelyDate(fileEntry,  filename):
             DebugPrint (str(hist),  0)
             DebugPrint ("max is " + str(maxCount) + " " + max,  0)
     # second priority order
-    
-    
     return [success,  year,  month,  day]
 
 def parseIni(filename, directory):
     # we will only process the properly named picasa ini file
 
-    if (os.path.basename(filename) != ".picasa.ini"):
+    if (os.path.basename(filename) != ".picasa.ini" and
+        os.path.basename(filename) != "Picasa.ini" and
+        os.path.basename(filename) != ".Picasa.ini"):
         ErrorPrint("Skipping processing: " + filename + " : " + directory)
         return
-    lines = [line.rstrip('\n') for line in open(filename)]
-    mode = 0  # 0=idle, 1=contacts, 2=image
+    lines = [line.rstrip('\n') for line in open(filename, encoding="utf8")]
+    mode = 0  # 0=idle, 1=contacts, 2=image, 3=Picasa
     hashname = "" # remember the image name's hash
     for l in lines:
-        print("line: " + l)
         nameInLine = re.search("^\[([^\]]+)\]$", l)
-        print(" --- " + str(nameInLine))
         if (l == "[Contacts2]"):
-            print("Mode: Contacts2")
             mode = 1 # contacts
+        elif (l == "[Picasa]"):
+            mode = 3 # Picasa
         elif (nameInLine != None):
-            print("Mode: Image")
             mode = 2 # image info
             imageName = nameInLine.group(1)
             fullImageName = os.path.join(directory, imageName)
@@ -482,27 +540,25 @@ def parseIni(filename, directory):
                     ErrorPrint (errorInfo + "Error! zero refcount is unexpected")
                 PicasaDB[hashname]['RefCount'] = count + 1
         else: # normal line, so pull according to state
-            print("Mode: key=value")
             m = re.search("^([a-z0-9]+)=(.+)$", l)
             try:
                 phash = m.group(1)
                 pcontent = m.group(2)
                 if (mode == 1):
                     PicasaDB['Contacts2'][phash] = pcontent
+                elif (mode == 3):
+                    PicasaDB['Picasa'][phash] = pcontent
                 elif (mode == 2):
-                    print("add to "+ fullImageName)
                     entry = PicasaDB[hashname].get(phash, 0)
                     if (entry == 0):
                         PicasaDB[hashname][phash] = pcontent
                     else:
                         if (entry != pcontent):
                             ErrorPrint("Overwriting picasa data! Mismatch!")
-                            print("Overwriting: " + entry + "::" + pcontent)
+                            ErrorPrint("Overwriting:" + entry + "::" + pcontent)
             except AttributeError as e:
                 pass
 
-
-    
 # a quick little function that cleans up the debug prints throughout the code
 # example: if verbose is at 3, it prints everything
 # if at v=1, then only general function flow is printed

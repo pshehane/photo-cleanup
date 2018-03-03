@@ -12,17 +12,18 @@ def test(dirList, outputJsonName):
     print("Running test-----------------------")
     MediaDB.InitDB(3)
     for theDir in dirList:
+        print("--> Directory: ", theDir)
         for root, directories, files in os.walk(theDir):
             for filename in files:
                 fullname = os.path.join(root, filename)
-                print("--> Adding: ",  fullname)
+                #print("--> Adding: ",  fullname)
                 MediaDB.AddFileToDB(fullname, root)
-    MediaDB.ReportStats()
     MediaDB.DumpDB()
     MediaDB.UpdateDB()
-    MediaDB.OutputJson(outputJsonName)
+    MediaDB.ReportStats()
     MediaDB.CreateRecommendedTree()
     outputString = MediaDB.GetRecommendedTreeString()
+    MediaDB.OutputJson(outputJsonName)
     print(outputString)
     MediaDB.CleanupDB()    
     print("Finished test.....................")
