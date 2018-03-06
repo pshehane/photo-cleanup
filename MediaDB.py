@@ -64,6 +64,7 @@ def InitDB(requestedVerboseLevel):
     SortDB["RootNode"] = Node("top")
     PicasaDB["Contacts2"] = {} # list
     PicasaDB["Picasa"] = {} # list
+    PicasaDB["Encoding"] = {} # list
 
 #---------------------
 # CleanupDB
@@ -95,7 +96,7 @@ def AddFileToDB(file,  dir):
             UpdateStatsAdd(ftype)
             return 1
 
-        hashname = hashlib.md5(file.encode('utf-8')).hexdigest()
+        hashname = calcHash(file)
         entry = DictDB.get(hashname, 0)
         if (entry == 0):
             DictDB[hashname] = {}
@@ -103,6 +104,8 @@ def AddFileToDB(file,  dir):
             DictDB[hashname]['Name'] = file
             DictDB[hashname]['Directory']= dir
             DictDB[hashname]['FileType'] = ftype
+            DictDB[hashname]['DupeList'] = []
+            DictDB[hashname]['DupeList'].append(file)
             # if this is the first time we see this file then treat as unique, otherwise, collision occurred
             StatsDB["Total files"] = StatsDB["Total files"] + 1
             UpdateStatsAdd(ftype)
@@ -113,7 +116,11 @@ def AddFileToDB(file,  dir):
                 errorInfo = str(frameinfo.filename) + ":" + str(frameinfo.lineno) + "> "
                 ErrorPrint (errorInfo + "Error! zero refcount is unexpected")
             DictDB[hashname]['RefCount'] = count + 1
+            DictDB[hashname]['DupeList'].append(file)
             StatsDB["Collision count"] = StatsDB["Collision count"] + 1
+            orig = DictDB[hashname].get('Name', "(null)")
+            print("Collision: " + file + " with " + orig)
+            print("All collisions: " + str(DictDB[hashname]['DupeList']))
     else:
         ErrorPrint("AddFileToDB: Skipping: " + file)
     return count
@@ -123,7 +130,7 @@ def AddFileToDB(file,  dir):
 # Return count of items with supplied name
 #--------------------
 def CheckFileInDB(file):
-    hashname = hashlib.md5(file.encode('utf-8')).hexdigest()
+    hashname = calcHash(file)
     DebugPrint("Checking <" + file + "> is in DB",  3)
     count = DictDB.get(hashname,  0) 
     if (count != 0):
@@ -139,7 +146,7 @@ def CheckFileInDB(file):
 #--------------------    
 def RemoveFileFromDB(file):
     DebugPrint("Removing <" + file + "> from DB",  3)
-    hashname = hashlib.md5(file.encode('utf-8')).hexdigest()
+    hashname = calcHash(file)
     entry = DictDB.get(hashname, 0)
     if (entry == 0): 
         # error
@@ -270,19 +277,30 @@ def ReportStats():
 
 DictExtensions = {   '.ini':'i', # ini data
                                '.jpg':'p' , # still image photo
+                               '.jpeg':'p',
                                '.tiff':'p',
+                               '.tif':'p',
+                               '.heic':'p',
                                '.bmp':'p',
+                               '.gif':'p',
+                               '.png':'p',
+                               '.mp0':'p',
                                '.arf':'r', # still image raw
                                '.arw':'r',
+                               '.srf':'r',
                                '.dng':'r',
                                '.thm':'m', # meta data
                                '.moff':'m',
                                '.modd':'m',
+                               '.xmp':'m', 
                                '.mov':'v', # video
                                '.mp4':'v',
+                               '.wmv':'v',
                                '.mts':'v',
                                '.mpg':'v',
+                               '.3gp':'v',
                                '.m2ts':'v',
+                               '.wav':'v',
                                '.avi':'v'}
 Map_TypeToStat = {  'p': "Picture count", 
                                 'i': "Ini count",
@@ -333,7 +351,7 @@ def Analyze(hashname,  fileEntry):
     if (dateFile[0]):
         StatsDB['DateFromFile'] = StatsDB['DateFromFile'] + 1
     theParentDir = os.path.basename(theDir)
-    print("Analyze: tag = " + theParentDir)
+    #print("Analyze: tag = " + theParentDir)
     if ('Tag' not in fileEntry):
         fileEntry['Tag'] = theParentDir
 
@@ -350,12 +368,16 @@ def FindDateFromEXIF(file):
     f = open(file,  'rb')
     #print("FindDateFromEXIF:" + file)
     try:
-        tags = exifread.process_file(f, stop_tag='EXIF DateTimeOriginal', debug=True)
+        #tags = exifread.process_file(f, stop_tag='EXIF DateTimeOriginal', debug=True)
+        tags = exifread.process_file(f, stop_tag='EXIF DateTimeOriginal')
     except MemoryError:
+        print("EXIF MemoryError: " + file)
         tags = {}
     except TypeError:
+        print("EXIF TypeError: " + file)
         tags = {}
     except IndexError:
+        print("EXIF IndexError: " + file)
         tags = {}
     f.close()
     value = tags.get(tag,  "unfound datetime")
@@ -366,9 +388,10 @@ def FindDateFromEXIF(file):
         day = int(m.group(3))
         success = 1
     except Exception as e:
+        success = 0
         frameinfo = getframeinfo(currentframe())
         errorInfo = str(frameinfo.filename) + ":" + str(frameinfo.lineno) + "> "
-        ErrorPrint(errorInfo+"No EXIF tag in file:" + file)
+        DebugPrint(errorInfo+"No EXIF tag in file:" + file, 3)
     return [success,  year,  month,  day]
     
 def FindDateFromDirectory(file):
@@ -481,7 +504,6 @@ def VotingBased_DetermineLikelyDate(fileEntry,  filename):
         if (fileEntry[key][0] == 0):
             continue
         current = str(fileEntry[key])
-        print ("current: " + current)
         if (hist.get(current,  0) == 0):
             hist[current] = 1
         else:
@@ -513,7 +535,7 @@ def parseIni(filename, directory):
         ErrorPrint("Skipping processing: " + filename + " : " + directory)
         return
     lines = [line.rstrip('\n') for line in open(filename, encoding="utf8")]
-    mode = 0  # 0=idle, 1=contacts, 2=image, 3=Picasa
+    mode = 0  # 0=idle, 1=contacts, 2=image, 3=Picasa, 4=encoding
     hashname = "" # remember the image name's hash
     for l in lines:
         nameInLine = re.search("^\[([^\]]+)\]$", l)
@@ -521,11 +543,16 @@ def parseIni(filename, directory):
             mode = 1 # contacts
         elif (l == "[Picasa]"):
             mode = 3 # Picasa
+        elif (l == "[encoding]"):
+            mode = 4 # encoding
         elif (nameInLine != None):
             mode = 2 # image info
             imageName = nameInLine.group(1)
             fullImageName = os.path.join(directory, imageName)
-            hashname = hashlib.md5(fullImageName.encode('utf-8')).hexdigest()
+            try:
+                hashname = calcHash(fullImageName)
+            except FileNotFoundError:
+                hashname = hashlib.md5(fullImageName.encode('utf-8')).hexdigest()
             entry = PicasaDB.get(hashname, 0)
             if (entry == 0):
                 PicasaDB[hashname] = {}
@@ -554,10 +581,18 @@ def parseIni(filename, directory):
                         PicasaDB[hashname][phash] = pcontent
                     else:
                         if (entry != pcontent):
-                            ErrorPrint("Overwriting picasa data! Mismatch!")
-                            ErrorPrint("Overwriting:" + entry + "::" + pcontent)
+                            ErrorPrint("parseIni: "+phash+"Overwriting:" + entry + "::" + pcontent)
             except AttributeError as e:
                 pass
+
+def calcHash(file):
+    #hashname = hashlib.md5(file.encode('utf-8')).hexdigest()
+    hash_md5 = hashlib.md5()
+    with open(file, 'rb') as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    hashname = hash_md5.hexdigest()
+    return hashname
 
 # a quick little function that cleans up the debug prints throughout the code
 # example: if verbose is at 3, it prints everything
