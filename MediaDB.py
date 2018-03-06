@@ -4,6 +4,7 @@
 # 
 
 import os
+import sys
 import json
 import hashlib
 import datetime
@@ -18,6 +19,9 @@ from anytree import  Node,  RenderTree
 #  value = { count, meta data }
 # ref count is for debugging and if user provided overlapping directory searches
 DictDB = {}
+MetaDB = {}
+NameToHashDB = {}
+
 # Meta Data for DictDB
 #   { FileType, 'Date' from directory, 'Date' from EXIF, 'Date' from stat }
 
@@ -45,26 +49,38 @@ PicasaDB = {}
 # InitDB
 # call to initialize the library and the internal DB's
 #--------------------
-def InitDB(requestedVerboseLevel):
+def InitDB(JsonInitFile ="", Debug = 0):
     print("Initializing DB")
-    Globals["VerboseLevel"] = requestedVerboseLevel
-    StatsDB["Ini count"] = 0   # .ini files, etc
-    StatsDB["Meta count"] = 0   # .moff,.thm files, etc
-    StatsDB["Picture count"] = 0     # any still or multi-still image
-    StatsDB["Video count"] = 0        # any video sequence
-    StatsDB["Raw count"] = 0           # any RAW image files
-    StatsDB["Reject count"] = 0      # when the Add fails, due to file not being image-type
-    StatsDB["Collision count"] = 0 # when files are duplicate
-    StatsDB["Total files"] = 0        # incremented for all files put into the DB
-    StatsDB["Error"] = 0                  # for easy lookup from stats DB
-    StatsDB["DateFromEXIF"] = 0 # debug - how many came from EXIF
-    StatsDB["DateFromStat"] = 0 # debug - how many came from Stat
-    StatsDB["DateFromDir"] = 0  # debug - how many came from Dir
-    StatsDB["DateFromFile"] = 0 # debug - how many came from File
+
+    Globals["VerboseLevel"] = Debug
     SortDB["RootNode"] = Node("top")
-    PicasaDB["Contacts2"] = {} # list
-    PicasaDB["Picasa"] = {} # list
-    PicasaDB["Encoding"] = {} # list
+    if (JsonInitFile  is ""):
+        StatsDB["Ini count"] = 0   # .ini files, etc
+        StatsDB["Meta count"] = 0   # .moff,.thm files, etc
+        StatsDB["Picture count"] = 0     # any still or multi-still image
+        StatsDB["Video count"] = 0        # any video sequence
+        StatsDB["Raw count"] = 0           # any RAW image files
+        StatsDB["Reject count"] = 0      # when the Add fails, due to file not being image-type
+        StatsDB["Collision count"] = 0 # when files are duplicate
+        StatsDB["Total files"] = 0        # incremented for all files put into the DB
+        StatsDB["Error"] = 0                  # for easy lookup from stats DB
+        StatsDB["DateFromEXIF"] = 0 # debug - how many came from EXIF
+        StatsDB["DateFromStat"] = 0 # debug - how many came from Stat
+        StatsDB["DateFromDir"] = 0  # debug - how many came from Dir
+        StatsDB["DateFromFile"] = 0 # debug - how many came from File
+        PicasaDB["Contacts2"] = {} # list
+        PicasaDB["Picasa"] = {} # list
+        PicasaDB["Encoding"] = {} # list
+    else:
+        if JsonInitFile:
+            with open(JsonInitFile, 'r') as f:
+                SuperStructure = json.load(f)
+        DictDB.update(SuperStructure['DictDB'])
+        StatsDB.update(SuperStructure['StatsDB'])
+        PicasaDB.update(SuperStructure['PicasaDB'])
+        NewDirDB.update(SuperStructure['NewDirDB'])
+        MetaDB.update(SuperStructure['MetaDB'])
+        NameToHashDB.update(SuperStructure['NameToHashDB'])
 
 #---------------------
 # CleanupDB
@@ -91,12 +107,33 @@ def AddFileToDB(file,  dir):
     # is this a file we care about? otherwise ignore
     ftype = IsImagingFile(file)
     if (ftype != '0'):
+        # first handle 'i' ini files and 'm' metadata files
         if (ftype == 'i'):
             parseIni(file, dir)
             UpdateStatsAdd(ftype)
             return 1
 
-        hashname = calcHash(file)
+        elif (ftype == 'm'):
+            basename = os.path.basename(file)
+            the_name, the_extension = os.path.splitext(basename)
+            entry = MetaDB.get(the_name, 0)
+            if (entry == 0):
+                MetaDB[the_name] = {}
+                MetaDB[the_name]['MetaList'] = []
+            MetaDB[the_name]['MetaList'].append(file)
+            return 1
+
+        # now process 'p' photos, 'r' raws, and 'v' videos
+
+        # first look to see if we have seen this file before
+        # people might accidentally add subdirs, causing redundancy
+        translation = NameToHashDB.get(file, 0)
+        if (translation is 0):
+            hashname = calcHash(file)
+            NameToHashDB[file] = hashname
+        else:
+            hashname = NameToHashDB[file]
+
         entry = DictDB.get(hashname, 0)
         if (entry == 0):
             DictDB[hashname] = {}
@@ -242,10 +279,35 @@ def GetRecommendedTreeString():
 # DumpDB - useful for debug
 # ------
 def DumpDB():
-    DebugPrint("DB contents:",  0)
+    DebugPrint("DictDB contents:",  0)
     for k in DictDB.keys():
         stringOut = " " + k + " : " + str(DictDB[k])
         #stringOut = stringOut + " : " + DictDB[k]
+        DebugPrint(stringOut,  0)
+    DebugPrint("StatsDB contents:",  0)
+    for k in StatsDB.keys():
+        stringOut = " " + k + " : " + str(StatsDB[k])
+        #stringOut = stringOut + " : " + StatsDB[k]
+        DebugPrint(stringOut,  0)
+    DebugPrint("PicasaDB contents:",  0)
+    for k in PicasaDB.keys():
+        stringOut = " " + k + " : " + str(PicasaDB[k])
+        #stringOut = stringOut + " : " + PicasaDB[k]
+        DebugPrint(stringOut,  0)
+    DebugPrint("NewDirDB contents:",  0)
+    for k in NewDirDB.keys():
+        stringOut = " " + k + " : " + str(NewDirDB[k])
+        #stringOut = stringOut + " : " + NewDirDB[k]
+        DebugPrint(stringOut,  0)
+    DebugPrint("MetaDB contents:",  0)
+    for k in MetaDB.keys():
+        stringOut = " " + k + " : " + str(MetaDB[k])
+        #stringOut = stringOut + " : " + MetaDB[k]
+        DebugPrint(stringOut,  0)
+    DebugPrint("NameToHashDB contents:",  0)
+    for k in NameToHashDB.keys():
+        stringOut = " " + k + " : " + str(NameToHashDB[k])
+        #stringOut = stringOut + " : " + NameToHashDB[k]
         DebugPrint(stringOut,  0)
 
 # -----
@@ -257,6 +319,8 @@ def OutputJson(outputName):
     SuperStructure['StatsDB'] = StatsDB
     SuperStructure['PicasaDB'] = PicasaDB
     SuperStructure['NewDirDB'] = NewDirDB
+    SuperStructure['MetaDB'] = MetaDB
+    SuperStructure['NameToHashDB'] = NameToHashDB
 
     jsonFile = open(outputName, "w")
     jstr = json.dumps(SuperStructure, sort_keys=True,
@@ -366,7 +430,7 @@ def FindDateFromEXIF(file):
     tag = 'EXIF DateTimeOriginal'
 
     f = open(file,  'rb')
-    #print("FindDateFromEXIF:" + file)
+    print("FindDateFromEXIF:" + file, end='')
     try:
         #tags = exifread.process_file(f, stop_tag='EXIF DateTimeOriginal', debug=True)
         tags = exifread.process_file(f, stop_tag='EXIF DateTimeOriginal')
@@ -392,6 +456,8 @@ def FindDateFromEXIF(file):
         frameinfo = getframeinfo(currentframe())
         errorInfo = str(frameinfo.filename) + ":" + str(frameinfo.lineno) + "> "
         DebugPrint(errorInfo+"No EXIF tag in file:" + file, 3)
+
+    print(".")
     return [success,  year,  month,  day]
     
 def FindDateFromDirectory(file):
@@ -580,7 +646,10 @@ def parseIni(filename, directory):
                     if (entry == 0):
                         PicasaDB[hashname][phash] = pcontent
                     else:
-                        if (entry != pcontent):
+                        #print an error, except if it is backuphash
+                        # researched, it sounds like backuphash is tied
+                        # to the backup sets. and not relevant anymore
+                        if (entry != pcontent and phash is not "backuphash"):
                             ErrorPrint("parseIni: "+phash+"Overwriting:" + entry + "::" + pcontent)
             except AttributeError as e:
                 pass
@@ -588,9 +657,17 @@ def parseIni(filename, directory):
 def calcHash(file):
     #hashname = hashlib.md5(file.encode('utf-8')).hexdigest()
     hash_md5 = hashlib.md5()
+    good_enough_number_of_chunks = 100 # how much to determine uniqueness?
+    chunk_count = good_enough_number_of_chunks
     with open(file, 'rb') as f:
         for chunk in iter(lambda: f.read(4096), b""):
             hash_md5.update(chunk)
+            chunk_count = chunk_count - 1
+            if (chunk_count <= 0):
+                break
+    #added uniqueness = add the file size to the md5
+    chunk = str(os.stat(file).st_size).encode('utf-8')
+    hash_md5.update(chunk)
     hashname = hash_md5.hexdigest()
     return hashname
 
